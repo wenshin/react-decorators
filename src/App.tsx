@@ -11,10 +11,9 @@ import {
 } from "./decorators/react";
 
 class App extends Component {
-  // @state counter: Array<{ name: number }> = [];
-  @state counter = {
-    value: 1,
-  };
+  // @state counter: Array<number> = [];
+  // @state counter: Set<number> = new Set();
+  @state foo: Set<{ value: number }> = new Set([{ value: 0 }]);
 
   @mounted
   onlyMounted() {
@@ -44,15 +43,19 @@ class App extends Component {
   }
 
   click = () => {
-    this.counter.value++;
+    // this.counter.add(this.counter.size + 1);
+    // this.counter.push(1);
+    const elems = Array.from(this.foo);
+    elems[0].value++;
   };
 
   render() {
+    const elems = Array.from(this.foo);
     return (
       <div className="App">
         <header className="App-header">
           <img src={logo} className="App-logo" alt="logo" />
-          <p>Number {this.counter.value}</p>
+          <p>Number {elems[0].value}</p>
           <button onClick={this.click}>Count</button>
         </header>
       </div>

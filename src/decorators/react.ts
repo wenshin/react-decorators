@@ -74,6 +74,85 @@ export function state<T>(
 }
 
 /**
+ * deal with Set, Map, WeakMap methods
+ * @param t
+ * @param p
+ * @param v
+ * @param update
+ * @returns
+ */
+function getFunctionValue(
+  t: object,
+  p: string | symbol,
+  v: unknown,
+  update: () => void
+): Function | undefined {
+  /**
+   * the Set, Map, WeakMap
+   * 1. do not save element as a property of instance
+   * 2. will check the instance type which call the methods
+   * so can only hack the methods to trigger update
+   */
+  if (
+    typeof v === "function" &&
+    (t instanceof Set || t instanceof Map || t instanceof WeakMap)
+  ) {
+    if ((p as string) === "get") {
+      return (k: string) => {
+        const e = v.call(t, k);
+        return getChildProxy(e, () => e, update);
+      };
+    }
+
+    if ((p as string) === "forEach") {
+      return (iter: (e: unknown, k: string) => void) => {
+        return v.call(t, (e: unknown, k: string) => {
+          return iter(
+            getChildProxy(e, () => e, update),
+            k
+          );
+        });
+      };
+    }
+
+    if (["entries", "values", "keys", Symbol.iterator].includes(p as string)) {
+      return () => {
+        const iterator = v.call(t) as Iterator<unknown, unknown>;
+        return {
+          next() {
+            const nextData = iterator.next();
+            const nextValue = nextData.value;
+            if ((p as string) === "entries") {
+              const [k, e] = nextValue as [unknown, unknown];
+              nextData.value = [k, getChildProxy(e, () => e, update)];
+            } else {
+              nextData.value = getChildProxy(
+                nextValue,
+                () => nextValue,
+                update
+              );
+            }
+            return nextData;
+          },
+          [Symbol.iterator]: function () {
+            return this;
+          },
+        };
+      };
+    }
+
+    if (["add", "set", "clear", "delete"].includes(p as string)) {
+      return (...args: unknown[]) => {
+        const ret = v.call(t, ...args);
+        update();
+        return ret;
+      };
+    }
+    return v.bind(t);
+  }
+}
+
+/**
  * 递归给属性添加代理
  * @param obj
  * @param getCurrentObj 获得最新的代理对象，用于更新
@@ -88,9 +167,8 @@ function getChildProxy(
   if (obj && typeof obj === "object") {
     return new Proxy(obj, {
       get(t, p) {
-        return getChildProxy(
-          // @ts-ignore
-          t[p],
+        const v = getChildProxy(
+          (t as any)[p],
           function () {
             const currentTarget = getCurrentObj();
             if (currentTarget) {
@@ -107,13 +185,17 @@ function getChildProxy(
           },
           update
         );
+        const fn = getFunctionValue(t, p, v, update);
+        return fn || v;
       },
       set(t, p, v) {
-        // @ts-ignore
-        t[p] = v;
+        (t as any)[p] = v;
         const currentObj = getCurrentObj();
         if (currentObj) {
-          currentObj[p] = v;
+          // proxy target has changed, so need update property value again
+          if (currentObj !== t) {
+            currentObj[p] = v;
+          }
           update();
         }
         return true;
