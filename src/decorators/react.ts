@@ -6,11 +6,15 @@ export function state<T>(
   prop: string,
   descriptor?: TypedPropertyDescriptor<T> & {
     // class instance property type
-    initializer?: () => T;
+    initializer?: () => T | null;
   }
 ) {
   // property
-  if (!descriptor || descriptor.initializer || "value" in descriptor) {
+  if (
+    !descriptor ||
+    descriptor.hasOwnProperty("initializer") ||
+    descriptor.hasOwnProperty("value")
+  ) {
     let initValue: any;
     if (descriptor) {
       initValue = descriptor.initializer

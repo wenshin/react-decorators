@@ -82,6 +82,37 @@ test("@state foo = { bar: 1 }, update sub property", () => {
   expect(screen.getByText(/render2/i)).toBeInTheDocument();
 });
 
+test("@state foo: number, init with undefined", () => {
+  class Case extends Component {
+    @state foo?: number;
+
+    handleClick = () => {
+      if (this.foo === undefined) {
+        this.foo = 1;
+      } else {
+        this.foo++;
+      }
+    };
+
+    render() {
+      return (
+        <div>
+          <span>counter{this.foo || 0}</span>
+          <button onClick={this.handleClick}>add</button>
+        </div>
+      );
+    }
+  }
+  render(<Case />);
+  expect(screen.getByText(/counter0/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("add"));
+  expect(screen.getByText(/counter1/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("add"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+});
+
 test("@state foo = { bar: 1 }, update object", () => {
   class Case extends Component {
     @state foo = { bar: 1 };
