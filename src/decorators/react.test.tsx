@@ -4,35 +4,90 @@ import { state } from "./react";
 
 test("@state foo = 1", () => {
   class Case extends Component {
+    renderCount = 0;
+
     @state foo = 1;
 
     handleClick = () => {
       this.foo++;
     };
 
+    handleSameValue = () => {
+      const v = this.foo;
+      this.foo = v;
+    };
+
     render() {
+      this.renderCount++;
       return (
         <div>
-          <span>{this.foo}</span>
+          <span>counter{this.foo}</span>
+          <span>render{this.renderCount}</span>
           <button onClick={this.handleClick}>add</button>
+          <button onClick={this.handleSameValue}>samevalue</button>
         </div>
       );
     }
   }
   render(<Case />);
-  let linkElement = screen.getByText(/1/i);
-  expect(linkElement).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button"));
-  linkElement = screen.getByText(/2/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getByText(/counter1/i)).toBeInTheDocument();
+  expect(screen.getByText(/render1/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("add"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+  expect(screen.getByText(/render2/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("samevalue"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+  expect(screen.getByText(/render2/i)).toBeInTheDocument();
 });
 
-test("@state foo = { bar: 1 }", () => {
+test("@state foo = { bar: 1 }, update sub property", () => {
   class Case extends Component {
+    renderCount = 0;
+
     @state foo = { bar: 1 };
 
     handleClick = () => {
       this.foo.bar++;
+    };
+
+    handleSameValue = () => {
+      const v = this.foo.bar;
+      this.foo.bar = v;
+    };
+
+    render() {
+      this.renderCount++;
+      return (
+        <div>
+          <span>counter{this.foo.bar}</span>
+          <span>render{this.renderCount}</span>
+          <button onClick={this.handleClick}>add</button>
+          <button onClick={this.handleSameValue}>samevalue</button>
+        </div>
+      );
+    }
+  }
+  render(<Case />);
+  expect(screen.getByText(/counter1/i)).toBeInTheDocument();
+  expect(screen.getByText(/render1/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("add"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+  expect(screen.getByText(/render2/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("samevalue"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+  expect(screen.getByText(/render2/i)).toBeInTheDocument();
+});
+
+test("@state foo = { bar: 1 }, update object", () => {
+  class Case extends Component {
+    @state foo = { bar: 1 };
+
+    handleClick = () => {
+      this.foo = { bar: 2 };
     };
 
     render() {

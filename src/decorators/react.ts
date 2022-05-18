@@ -59,7 +59,10 @@ export function state<T>(
           unknown,
           Record<string, unknown>
         >;
-        ins.setState({ [prop]: v });
+        // new state is not equal to old state, will update
+        if (ins.state && ins.state[prop] !== v) {
+          ins.setState({ [prop]: v });
+        }
       },
     };
     if (!descriptor) {
@@ -189,14 +192,23 @@ function getChildProxy(
         return fn || v;
       },
       set(t, p, v) {
-        (t as any)[p] = v;
         const currentObj = getCurrentObj();
-        if (currentObj) {
-          // proxy target has changed, so need update property value again
-          if (currentObj !== t) {
-            currentObj[p] = v;
+        if (currentObj === t) {
+          // new value is not equal to old value, will update
+          if ((t as any)[p] !== v) {
+            (t as any)[p] = v;
+            update();
           }
-          update();
+        } else if (currentObj) {
+          // original target has changed
+          if (currentObj[p] !== v) {
+            // new value is not equal to old value, will update
+            currentObj[p] = v;
+            update();
+          }
+        } else {
+          // original target has removed
+          (t as any)[p] = v;
         }
         return true;
       },
