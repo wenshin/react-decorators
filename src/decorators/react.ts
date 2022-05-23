@@ -1,4 +1,58 @@
-import { Component } from "react";
+import { Component, PureComponent } from "react";
+
+interface StateContext {
+  isPure: boolean;
+  isShallow: boolean;
+}
+
+/**
+ * when use PureComponent，if you need update state by sub property like
+ * ```
+ * this.user.name = 'name'
+ * ```
+ * you need use pureState
+ * @param target
+ * @param prop
+ * @param descriptor
+ */
+export function pureState<T>(
+  target: PureComponent,
+  prop: string,
+  descriptor?: TypedPropertyDescriptor<T> & {
+    initializer?: () => T | null;
+  }
+) {
+  state(target, prop, descriptor, {
+    isPure: true,
+    isShallow: false,
+  });
+}
+
+/**
+ * if you do not want update state by sub properties,
+ * you can use shallowState, this decorator only update state like
+ * ```
+ * this.user = {
+ *   id: 1,
+ *   name: 'name',
+ * }
+ * ```
+ * @param target
+ * @param prop
+ * @param descriptor
+ */
+export function shallowState<T>(
+  target: Component,
+  prop: string,
+  descriptor?: TypedPropertyDescriptor<T> & {
+    initializer?: () => T | null;
+  }
+) {
+  state(target, prop, descriptor, {
+    isPure: false,
+    isShallow: true,
+  });
+}
 
 export function state<T>(
   // target 为 prototype 对象
@@ -7,7 +61,8 @@ export function state<T>(
   descriptor?: TypedPropertyDescriptor<T> & {
     // class instance property type
     initializer?: () => T | null;
-  }
+  },
+  ctx?: StateContext
 ) {
   // property
   if (
@@ -23,11 +78,14 @@ export function state<T>(
     }
     const accessor = {
       get() {
-        // 这里的 this 才是实际的组件实例
+        // the typescript may have a bug,
+        // the this is the instance of Component,
+        // but the typescript think it is the Component object
         const ins = this as unknown as Component<
           unknown,
           Record<string, unknown>
         >;
+        // update initial value
         if (initValue !== undefined) {
           if (!ins.state) {
             ins.state = {
@@ -39,6 +97,11 @@ export function state<T>(
         } else if (!ins.state) {
           ins.state = {};
         }
+
+        if (ctx && ctx.isShallow) {
+          return ins.state[prop];
+        }
+
         const value = getChildProxy(
           ins.state[prop],
           function () {
@@ -51,7 +114,17 @@ export function state<T>(
             return obj;
           },
           function () {
-            ins.setState({ [prop]: ins.state[prop] });
+            if (
+              ctx &&
+              ctx.isPure &&
+              ins.state[prop] &&
+              typeof ins.state[prop] === "object"
+            ) {
+              // if the sate of PureComponent, the ins.state[prop] will not rerender;
+              ins.setState({ [prop]: Object.assign({}, ins.state[prop]) });
+            } else {
+              ins.setState({ [prop]: ins.state[prop] });
+            }
           }
         );
         // console.log("1111 get", prop, value);
@@ -250,6 +323,15 @@ function getInitValueAndValidateFunction<T>(
   return initValue;
 }
 
+interface DecoratorContext {
+  isCallOnce: boolean;
+  isCalled: boolean;
+}
+
+function hasCallOnce(ctx?: DecoratorContext) {
+  return Boolean(ctx && ctx.isCallOnce && ctx.isCalled);
+}
+
 /**
  * decorator 中判断函数有两种方式
  * 1. descriptor 中 value 值为函数（这是常规类方法）
@@ -264,7 +346,8 @@ export function mounted<T>(
   descriptor?: TypedPropertyDescriptor<T> & {
     // class instance property type
     initializer?: () => T;
-  }
+  },
+  ctx?: DecoratorContext
 ) {
   getInitValueAndValidateFunction(prop, descriptor);
   const componentDidMount = target.componentDidMount;
@@ -273,7 +356,11 @@ export function mounted<T>(
       componentDidMount.apply(this, args);
     }
     if ((this as any)[prop] && typeof (this as any)[prop] === "function") {
-      (this as any)[prop](...args);
+      if (hasCallOnce(ctx)) return;
+      const isCalled = (this as any)[prop](...args);
+      if (ctx) {
+        ctx.isCalled = Boolean(isCalled);
+      }
     } else {
       throw new Error("react lifecycle decorators only used for function");
     }
@@ -295,7 +382,8 @@ export function updated<
   descriptor?: TypedPropertyDescriptor<T> & {
     // class instance property type
     initializer?: () => T;
-  }
+  },
+  ctx?: DecoratorContext
 ) {
   getInitValueAndValidateFunction(prop, descriptor);
   const componentDidUpdate = target.componentDidUpdate;
@@ -304,7 +392,11 @@ export function updated<
       componentDidUpdate.apply(this, args);
     }
     if ((this as any)[prop] && typeof (this as any)[prop] === "function") {
-      (this as any)[prop](...args);
+      if (hasCallOnce(ctx)) return;
+      const isCalled = (this as any)[prop](...args);
+      if (ctx) {
+        ctx.isCalled = Boolean(isCalled);
+      }
     } else {
       throw new Error("react lifecycle decorators only used for function");
     }
@@ -378,4 +470,33 @@ export function rendered<
 ) {
   mounted(target, prop, descriptor);
   updated(target, prop, descriptor);
+}
+
+/**
+ * call method once in didMount or didUpdate.
+ * the method must return true to indicate method has been called.
+ * @param target
+ * @param prop
+ * @param descriptor
+ */
+export function initialize<
+  P,
+  S,
+  SS,
+  T = (
+    prevProps?: Readonly<P>,
+    prevState?: Readonly<S>,
+    snapshot?: SS | undefined
+  ) => boolean
+>(
+  target: Component<P, S, SS>,
+  prop: string,
+  descriptor?: TypedPropertyDescriptor<T> & {
+    // class instance property type
+    initializer?: () => T;
+  }
+) {
+  const ctx = { isCalled: false, isCallOnce: true };
+  mounted(target, prop, descriptor, ctx);
+  updated(target, prop, descriptor, ctx);
 }

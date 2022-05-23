@@ -1,6 +1,15 @@
-import React, { Component } from "react";
+import React, { Component, PureComponent } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { state } from "./react";
+import {
+  initialize,
+  mounted,
+  pureState,
+  rendered,
+  shallowState,
+  shouldUpdate,
+  state,
+  willUnmount,
+} from "./react";
 
 test("@state foo = 1", () => {
   class Case extends Component {
@@ -78,6 +87,84 @@ test("@state foo = { bar: 1 }, update sub property", () => {
   expect(screen.getByText(/render2/i)).toBeInTheDocument();
 
   fireEvent.click(screen.getByText("samevalue"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+  expect(screen.getByText(/render2/i)).toBeInTheDocument();
+});
+
+test("@pureState foo = { bar: 1 }, should update by sub property", () => {
+  class Case extends PureComponent {
+    renderCount = 0;
+
+    @pureState foo = { bar: 1 };
+
+    handleClick = () => {
+      this.foo.bar++;
+    };
+
+    handleSameValue = () => {
+      const v = this.foo.bar;
+      this.foo.bar = v;
+    };
+
+    render() {
+      this.renderCount++;
+      return (
+        <div>
+          <span>counter{this.foo.bar}</span>
+          <span>render{this.renderCount}</span>
+          <button onClick={this.handleClick}>add</button>
+          <button onClick={this.handleSameValue}>samevalue</button>
+        </div>
+      );
+    }
+  }
+  render(<Case />);
+  expect(screen.getByText(/counter1/i)).toBeInTheDocument();
+  expect(screen.getByText(/render1/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("add"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+  expect(screen.getByText(/render2/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("samevalue"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+  expect(screen.getByText(/render2/i)).toBeInTheDocument();
+});
+
+test("@shallowState foo = { bar: 1 }, should not update by sub property", () => {
+  class Case extends Component {
+    renderCount = 0;
+
+    @shallowState foo = { bar: 1 };
+
+    handleClick = () => {
+      if (this.renderCount === 1) {
+        this.foo = { bar: 2 };
+      } else {
+        this.foo.bar++;
+      }
+    };
+
+    render() {
+      this.renderCount++;
+      return (
+        <div>
+          <span>counter{this.foo.bar}</span>
+          <span>render{this.renderCount}</span>
+          <button onClick={this.handleClick}>add</button>
+        </div>
+      );
+    }
+  }
+  render(<Case />);
+  expect(screen.getByText(/counter1/i)).toBeInTheDocument();
+  expect(screen.getByText(/render1/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("add"));
+  expect(screen.getByText(/counter2/i)).toBeInTheDocument();
+  expect(screen.getByText(/render2/i)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("add"));
   expect(screen.getByText(/counter2/i)).toBeInTheDocument();
   expect(screen.getByText(/render2/i)).toBeInTheDocument();
 });
@@ -504,4 +591,164 @@ test("@state foo = new WeakMap(), update element property", () => {
   fireEvent.click(screen.getByRole("button"));
   linkElement = screen.getByText(/2/i);
   expect(linkElement).toBeInTheDocument();
+});
+
+test("@mounted foo = 1, should fail with not function type", () => {
+  expect(() => {
+    class Case extends Component {
+      @mounted foo = 1;
+      render() {
+        return <div>test</div>;
+      }
+    }
+    render(<Case />);
+  }).toThrow(
+    "foo is not a function, and can not use react lifecycle decorators"
+  );
+});
+
+test("@mounted foo = () => {} and @mounted foo() {}, should call when DidMount", () => {
+  let count = 0;
+  class Case extends Component {
+    @mounted foo = () => count++;
+    @mounted bar() {
+      count++;
+    }
+    render() {
+      return <div>test</div>;
+    }
+  }
+  render(<Case />);
+  expect(count).toBe(2);
+});
+
+test("@rendered foo() {}, should call when DidMount and DidUpdate", () => {
+  let count = 0;
+  class Case extends Component {
+    @state text = "";
+    @rendered foo() {
+      count++;
+    }
+
+    handleClick = () => {
+      this.text = "test";
+    };
+
+    render() {
+      return <div onClick={this.handleClick}>name:{this.text}</div>;
+    }
+  }
+  render(<Case />);
+  // call when did mount
+  expect(count).toBe(1);
+  // tigger did update
+  fireEvent.click(screen.getByText(/name/));
+  // call when did update
+  expect(count).toBe(2);
+});
+
+test("@initialize init() {}, should call when DidMount and DidUpdate, and stop after return true", () => {
+  let count = 0;
+  class Case extends Component {
+    @state text = "";
+    @initialize init() {
+      count++;
+      if (count > 1) {
+        // do some initial works
+        // initialized
+        return true;
+      }
+      return false;
+    }
+
+    handleClick = () => {
+      this.text = "test";
+    };
+
+    render() {
+      return <div onClick={this.handleClick}>name:{this.text}</div>;
+    }
+  }
+  render(<Case />);
+  // call when did mount, init return false
+  expect(count).toBe(1);
+
+  // tigger did update
+  fireEvent.click(screen.getByText(/name/));
+  // call when did update, init return true
+  expect(count).toBe(2);
+
+  // tigger did update
+  fireEvent.click(screen.getByText(/name/));
+  // will not call when did update
+  expect(count).toBe(2);
+});
+
+test("@shouldUpdate foo() {}, should call when shouldUpdate", () => {
+  let count = 0;
+  class Case extends Component {
+    @state loading = false;
+    // foo call before bar
+    @shouldUpdate foo() {
+      count++;
+      if (count < 2) {
+        return true;
+      }
+      return false;
+    }
+    @shouldUpdate bar() {
+      count++;
+      return true;
+    }
+    stopLoading = () => {
+      this.loading = !this.loading;
+    };
+    render() {
+      return <button onClick={this.stopLoading}>click</button>;
+    }
+  }
+  render(<Case />);
+  expect(count).toBe(0);
+
+  fireEvent.click(screen.getByText(/click/));
+  // call foo and bar
+  expect(count).toBe(2);
+
+  fireEvent.click(screen.getByText(/click/));
+  // call foo only
+  expect(count).toBe(3);
+
+  fireEvent.click(screen.getByText(/click/));
+  // call foo only
+  expect(count).toBe(4);
+});
+
+test("@willUnmount foo() {}, should call when WillUnmount", () => {
+  let count = 0;
+  class Case extends Component {
+    @willUnmount bar() {
+      count++;
+    }
+    render() {
+      return <div>test</div>;
+    }
+  }
+  class App extends Component {
+    @state loading = true;
+    stopLoading = () => {
+      this.loading = false;
+    };
+    render() {
+      return (
+        <div>
+          {this.loading && <Case />}
+          <button onClick={this.stopLoading}>stop</button>
+        </div>
+      );
+    }
+  }
+  render(<App />);
+  expect(count).toBe(0);
+  fireEvent.click(screen.getByText(/stop/));
+  expect(count).toBe(1);
 });
