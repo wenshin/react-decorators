@@ -3,10 +3,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import {
   initialize,
   mounted,
-  pureState,
   rendered,
-  shallowState,
   shouldUpdate,
+  pureState,
+  deepState,
   state,
   willUnmount,
 } from "./react";
@@ -51,11 +51,11 @@ test("@state foo = 1", () => {
   expect(screen.getByText(/render2/i)).toBeInTheDocument();
 });
 
-test("@state foo = { bar: 1 }, update sub property", () => {
+test("@deepState foo = { bar: 1 }, update sub property", () => {
   class Case extends Component {
     renderCount = 0;
 
-    @state foo = { bar: 1 };
+    @deepState foo = { bar: 1 };
 
     handleClick = () => {
       this.foo.bar++;
@@ -131,11 +131,11 @@ test("@pureState foo = { bar: 1 }, should update by sub property", () => {
   expect(screen.getByText(/render2/i)).toBeInTheDocument();
 });
 
-test("@shallowState foo = { bar: 1 }, should not update by sub property", () => {
+test("@state foo = { bar: 1 }, should not update by sub property", () => {
   class Case extends Component {
     renderCount = 0;
 
-    @shallowState foo = { bar: 1 };
+    @state foo = { bar: 1 };
 
     handleClick = () => {
       if (this.renderCount === 1) {
@@ -225,9 +225,9 @@ test("@state foo = { bar: 1 }, update object", () => {
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo = [{value: 1}], update element.value property", () => {
+test("@deepState foo = [{value: 1}], update element.value property", () => {
   class Case extends Component {
-    @state foo = [{ value: 1 }];
+    @deepState foo = [{ value: 1 }];
 
     handleClick = () => {
       this.foo[0].value++;
@@ -250,9 +250,9 @@ test("@state foo = [{value: 1}], update element.value property", () => {
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo = [], push elements", () => {
+test("@deepState foo = [], push elements", () => {
   class Case extends Component {
-    @state foo: number[] = [];
+    @deepState foo: number[] = [];
 
     handleClick = () => {
       this.foo.push(1);
@@ -275,9 +275,9 @@ test("@state foo = [], push elements", () => {
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo: Set<number> = new Set(), add elements", () => {
+test("@deepState foo: Set<number> = new Set(), add elements", () => {
   class Case extends Component {
-    @state foo: Set<number> = new Set();
+    @deepState foo: Set<number> = new Set();
 
     handleClick = () => {
       this.foo.add(this.foo.size + 1);
@@ -323,9 +323,9 @@ test("@state foo: Set<number> = new Set(), add elements", () => {
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo: Set<object> = new Set(), update element property by change to Array", () => {
+test("@deepState foo: Set<object> = new Set(), update element property by change to Array", () => {
   class Case extends Component {
-    @state foo: Set<{ value: number }> = new Set([{ value: 0 }]);
+    @deepState foo: Set<{ value: number }> = new Set([{ value: 0 }]);
 
     handleClick = () => {
       const elems = Array.from(this.foo);
@@ -350,9 +350,9 @@ test("@state foo: Set<object> = new Set(), update element property by change to 
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo: Set<object> = new Set(), update element property by iterators", () => {
+test("@deepState foo: Set<object> = new Set(), update element property by iterators", () => {
   class Case extends Component {
-    @state foo: Set<{ value: number }> = new Set([{ value: 0 }]);
+    @deepState foo: Set<{ value: number }> = new Set([{ value: 0 }]);
 
     count = 0;
 
@@ -401,9 +401,9 @@ test("@state foo: Set<object> = new Set(), update element property by iterators"
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo = new Map(), add elements", () => {
+test("@deepState foo = new Map(), add elements", () => {
   class Case extends Component {
-    @state foo: Map<string, number> = new Map();
+    @deepState foo: Map<string, number> = new Map();
 
     handleClick = () => {
       this.foo.set(String(this.foo.size + 1), 1);
@@ -449,9 +449,9 @@ test("@state foo = new Map(), add elements", () => {
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo: Map<string, object> = new Map(), update element property", () => {
+test("@deepState foo: Map<string, object> = new Map(), update element property", () => {
   class Case extends Component {
-    @state foo: Map<string, { value: number }> = new Map();
+    @deepState foo: Map<string, { value: number }> = new Map();
 
     count = 0;
 
@@ -530,9 +530,9 @@ test("@state foo: Map<string, object> = new Map(), update element property", () 
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo = new WeakMap(), add elements", () => {
+test("@deepState foo = new WeakMap(), add elements", () => {
   class Case extends Component {
-    @state foo: WeakMap<object, number> = new Map();
+    @deepState foo: WeakMap<object, number> = new Map();
     key = () => {};
 
     handleClick = () => {
@@ -556,9 +556,9 @@ test("@state foo = new WeakMap(), add elements", () => {
   expect(linkElement).toBeInTheDocument();
 });
 
-test("@state foo = new WeakMap(), update element property", () => {
+test("@deepState foo = new WeakMap(), update element property", () => {
   class Case extends Component {
-    @state foo: WeakMap<object, { value: number }> = new Map();
+    @deepState foo: WeakMap<object, { value: number }> = new Map();
     key = () => {};
 
     handleClick = () => {

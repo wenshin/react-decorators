@@ -1,14 +1,22 @@
-import { Component, PureComponent } from "react";
+import { Component } from "react";
 
 interface StateContext {
+  /**
+   * is pure component or not
+   */
   isPure: boolean;
-  isShallow: boolean;
+  /**
+   * is deep proxy all property or not
+   */
+  isDeep: boolean;
 }
 
 /**
  * when use PureComponent，if you need update state by sub property like
  * ```
  * this.user.name = 'name'
+ * this.users[0].name = 'name'
+ * this.users.push({ name: 'name' })
  * ```
  * you need use pureState
  * @param target
@@ -16,7 +24,7 @@ interface StateContext {
  * @param descriptor
  */
 export function pureState<T>(
-  target: PureComponent,
+  target: Component,
   prop: string,
   descriptor?: TypedPropertyDescriptor<T> & {
     initializer?: () => T | null;
@@ -24,24 +32,23 @@ export function pureState<T>(
 ) {
   state(target, prop, descriptor, {
     isPure: true,
-    isShallow: false,
+    isDeep: true,
   });
 }
 
 /**
- * if you do not want update state by sub properties,
- * you can use shallowState, this decorator only update state like
+ * if you want update state by sub properties, you can use deepState.
+ * this decorator will update state like bellow case.
  * ```
- * this.user = {
- *   id: 1,
- *   name: 'name',
- * }
+ * this.user.name = 'name'
+ * this.users[0].name = 'name'
+ * this.users.push({ name: 'name' })
  * ```
  * @param target
  * @param prop
  * @param descriptor
  */
-export function shallowState<T>(
+export function deepState<T>(
   target: Component,
   prop: string,
   descriptor?: TypedPropertyDescriptor<T> & {
@@ -50,10 +57,28 @@ export function shallowState<T>(
 ) {
   state(target, prop, descriptor, {
     isPure: false,
-    isShallow: true,
+    isDeep: true,
   });
 }
 
+/**
+ * shallow proxy component property to update state automaticly.
+ * this decorator only update state like bellow case.
+ * ```
+ * this.user = new Set();
+ * this.user = new Map();
+ * this.user = 1;
+ * this.user = "";
+ * this.user = {
+ *   id: 1,
+ *   name: 'name',
+ * }
+ * ```
+ * @param target
+ * @param prop
+ * @param descriptor
+ * @param ctx
+ */
 export function state<T>(
   // target 为 prototype 对象
   target: Component,
@@ -98,7 +123,7 @@ export function state<T>(
           ins.state = {};
         }
 
-        if (ctx && ctx.isShallow) {
+        if (!ctx || !ctx.isDeep) {
           return ins.state[prop];
         }
 
