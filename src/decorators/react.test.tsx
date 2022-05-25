@@ -684,6 +684,55 @@ test("@initialize init() {}, should call when DidMount and DidUpdate, and stop a
   expect(count).toBe(2);
 });
 
+test("@initialize init() {}, should call when DidMount and DidUpdate, and stop after return function, and call function when unmount", () => {
+  let count = 0;
+  class Case extends Component {
+    @state text = "test";
+
+    @initialize init() {
+      if (count >= 1) {
+        // stop
+        return () => {
+          count++;
+        };
+      }
+      count++;
+    }
+    render() {
+      return (
+        <div onClick={() => (this.text = this.text + String(count))}>test</div>
+      );
+    }
+  }
+  class App extends Component {
+    @state loading = true;
+    stopLoading = () => {
+      this.loading = false;
+    };
+    render() {
+      return (
+        <div>
+          {this.loading && <Case />}
+          <button onClick={this.stopLoading}>stop</button>
+        </div>
+      );
+    }
+  }
+  render(<App />);
+  // call when did mount, init return false
+  expect(count).toBe(1);
+
+  // tigger Case component did update
+  fireEvent.click(screen.getByText(/test/));
+  // call when did update, init return function
+  expect(count).toBe(1);
+
+  // tigger did update
+  fireEvent.click(screen.getByText(/stop/));
+  // will unmount case
+  expect(count).toBe(2);
+});
+
 test("@shouldUpdate foo() {}, should call when shouldUpdate", () => {
   let count = 0;
   class Case extends Component {

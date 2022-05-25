@@ -327,7 +327,7 @@ function getChildProxy(
  * @param descriptor
  * @returns
  */
-function getInitValueAndValidateFunction<T>(
+export function getInitValueAndValidateFunction<T>(
   prop: string,
   descriptor?: TypedPropertyDescriptor<T> & {
     // class instance property type
@@ -350,11 +350,11 @@ function getInitValueAndValidateFunction<T>(
 
 interface DecoratorContext {
   isCallOnce: boolean;
-  isCalled: boolean;
+  isTruelyCalled: boolean;
 }
 
 function hasCallOnce(ctx?: DecoratorContext) {
-  return Boolean(ctx && ctx.isCallOnce && ctx.isCalled);
+  return Boolean(ctx && ctx.isCallOnce && ctx.isTruelyCalled);
 }
 
 /**
@@ -382,9 +382,13 @@ export function mounted<T>(
     }
     if ((this as any)[prop] && typeof (this as any)[prop] === "function") {
       if (hasCallOnce(ctx)) return;
-      const isCalled = (this as any)[prop](...args);
+      const ret = (this as any)[prop](...args);
       if (ctx) {
-        ctx.isCalled = Boolean(isCalled);
+        // only when initializing can bindUnmount
+        if (ctx.isCallOnce && typeof ret === "function") {
+          bindUnmount(target, this, prop, ret);
+        }
+        ctx.isTruelyCalled = Boolean(ret);
       }
     } else {
       throw new Error("react lifecycle decorators only used for function");
@@ -418,9 +422,13 @@ export function updated<
     }
     if ((this as any)[prop] && typeof (this as any)[prop] === "function") {
       if (hasCallOnce(ctx)) return;
-      const isCalled = (this as any)[prop](...args);
+      const ret = (this as any)[prop](...args);
       if (ctx) {
-        ctx.isCalled = Boolean(isCalled);
+        // only when initializing can bindUnmount
+        if (ctx.isCallOnce && typeof ret === "function") {
+          bindUnmount(target, this, prop, ret);
+        }
+        ctx.isTruelyCalled = Boolean(ret);
       }
     } else {
       throw new Error("react lifecycle decorators only used for function");
@@ -476,6 +484,32 @@ export function willUnmount<T>(
   };
 }
 
+/**
+ * auto call when will unmount.
+ * @param target
+ * @param ins
+ * @param prop
+ * @param fn
+ * @returns
+ */
+function bindUnmount(target: Component, ins: Component, prop: string, fn: any) {
+  if (!fn && typeof fn !== "function") return;
+  (ins as any)._unmountCbs = (ins as any)._unmountCbs || {};
+  // always cache the latest value
+  (ins as any)._unmountCbs[prop] = fn;
+
+  const componentWillUnmount = target.componentWillUnmount;
+  target.componentWillUnmount = function () {
+    if (componentWillUnmount) {
+      componentWillUnmount.call(ins);
+    }
+    const cb = (ins as any)._unmountCbs[prop];
+    if (cb) {
+      cb.call(ins);
+    }
+  };
+}
+
 export function rendered<
   P,
   S,
@@ -499,7 +533,8 @@ export function rendered<
 
 /**
  * call method once in didMount or didUpdate.
- * the method must return true to indicate method has been called.
+ * the method must return true or function to indicate method has been called.
+ * if returned function, the function will called when unmount.
  * @param target
  * @param prop
  * @param descriptor
@@ -512,7 +547,7 @@ export function initialize<
     prevProps?: Readonly<P>,
     prevState?: Readonly<S>,
     snapshot?: SS | undefined
-  ) => boolean
+  ) => boolean | Function
 >(
   target: Component<P, S, SS>,
   prop: string,
@@ -521,7 +556,10 @@ export function initialize<
     initializer?: () => T;
   }
 ) {
-  const ctx = { isCalled: false, isCallOnce: true };
+  const ctx = {
+    isTruelyCalled: false,
+    isCallOnce: true,
+  };
   mounted(target, prop, descriptor, ctx);
   updated(target, prop, descriptor, ctx);
 }
