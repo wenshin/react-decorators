@@ -12,13 +12,16 @@ import {
 } from "./react";
 
 test("@state foo = 1", () => {
-  class Case extends Component {
+  class Case extends Component<unknown, { foo: number }> {
     renderCount = 0;
 
     @state foo = 1;
 
     handleClick = () => {
+      const oldv = this.foo;
       this.foo++;
+      expect(this.state.foo).toBe(oldv);
+      expect(this.foo).toBe(oldv + 1);
     };
 
     handleSameValue = () => {

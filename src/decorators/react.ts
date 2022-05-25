@@ -11,6 +11,11 @@ interface StateContext {
   isDeep: boolean;
 }
 
+type StateComponent = Component<unknown, Record<string, unknown>> & {
+  _realtimeState: Record<string, unknown>;
+  state: Record<string, unknown>;
+};
+
 /**
  * when use PureComponent，if you need update state by sub property like
  * ```
@@ -106,31 +111,33 @@ export function state<T>(
         // the typescript may have a bug,
         // the this is the instance of Component,
         // but the typescript think it is the Component object
-        const ins = this as unknown as Component<
-          unknown,
-          Record<string, unknown>
-        >;
+        const ins = this as unknown as StateComponent;
         // update initial value
-        if (initValue !== undefined) {
-          if (!ins.state) {
-            ins.state = {
-              [prop]: initValue,
-            };
-          } else if (!ins.state.hasOwnProperty(prop)) {
-            (ins.state as any)[prop] = initValue;
-          }
-        } else if (!ins.state) {
+        // _realtimeState will save the last value
+        if (!ins.state) {
           ins.state = {};
+        }
+        if (!ins._realtimeState) {
+          ins._realtimeState = {};
+        }
+
+        if (initValue !== undefined) {
+          if (!ins.state.hasOwnProperty(prop)) {
+            ins.state[prop] = initValue;
+          }
+          if (!ins._realtimeState.hasOwnProperty(prop)) {
+            ins._realtimeState[prop] = initValue;
+          }
         }
 
         if (!ctx || !ctx.isDeep) {
-          return ins.state[prop];
+          return ins._realtimeState[prop];
         }
 
         const value = getChildProxy(
-          ins.state[prop],
+          ins._realtimeState[prop],
           function () {
-            const obj = ins.state[prop];
+            const obj = ins._realtimeState[prop];
             if (!obj || typeof obj !== "object") {
               new Error(
                 `can not update state ${prop}, cause of type changed or removed`
@@ -142,25 +149,23 @@ export function state<T>(
             if (
               ctx &&
               ctx.isPure &&
-              ins.state[prop] &&
-              typeof ins.state[prop] === "object"
+              ins._realtimeState[prop] &&
+              typeof ins._realtimeState[prop] === "object"
             ) {
               // if the sate of PureComponent, the ins.state[prop] will not rerender;
-              ins.setState({ [prop]: Object.assign({}, ins.state[prop]) });
+              ins.setState({
+                [prop]: Object.assign({}, ins._realtimeState[prop]),
+              });
             } else {
-              ins.setState({ [prop]: ins.state[prop] });
+              ins.setState({ [prop]: ins._realtimeState[prop] });
             }
           }
         );
-        // console.log("1111 get", prop, value);
         return value;
       },
       set(v: any) {
-        // console.log("1111 set", prop, v);
-        const ins = this as unknown as Component<
-          unknown,
-          Record<string, unknown>
-        >;
+        const ins = this as unknown as StateComponent;
+        ins._realtimeState[prop] = v;
         // new state is not equal to old state, will update
         if (ins.state && ins.state[prop] !== v) {
           ins.setState({ [prop]: v });
@@ -271,9 +276,9 @@ function getChildProxy(
 ): unknown {
   if (obj && typeof obj === "object") {
     return new Proxy(obj, {
-      get(t, p) {
+      get(t: Record<string | symbol, unknown>, p) {
         const v = getChildProxy(
-          (t as any)[p],
+          t[p],
           function () {
             const currentTarget = getCurrentObj();
             if (currentTarget) {
@@ -293,12 +298,12 @@ function getChildProxy(
         const fn = getFunctionValue(t, p, v, update);
         return fn || v;
       },
-      set(t, p, v) {
+      set(t: Record<string | symbol, unknown>, p, v) {
         const currentObj = getCurrentObj();
         if (currentObj === t) {
           // new value is not equal to old value, will update
-          if ((t as any)[p] !== v) {
-            (t as any)[p] = v;
+          if (t[p] !== v) {
+            t[p] = v;
             update();
           }
         } else if (currentObj) {
@@ -310,7 +315,7 @@ function getChildProxy(
           }
         } else {
           // original target has removed
-          (t as any)[p] = v;
+          t[p] = v;
         }
         return true;
       },
@@ -350,11 +355,14 @@ export function getInitValueAndValidateFunction<T>(
 
 interface DecoratorContext {
   isCallOnce: boolean;
-  isTruelyCalled: boolean;
 }
 
-function hasCallOnce(ctx?: DecoratorContext) {
-  return Boolean(ctx && ctx.isCallOnce && ctx.isTruelyCalled);
+function hasCallOnce(ins: Component, prop: string, ctx?: DecoratorContext) {
+  return Boolean(ctx && ctx.isCallOnce && (ins as any)[getCalledProp(prop)]);
+}
+
+function getCalledProp(prop: string) {
+  return `_${prop}_isTruelyCalled`;
 }
 
 /**
@@ -381,14 +389,14 @@ export function mounted<T>(
       componentDidMount.apply(this, args);
     }
     if ((this as any)[prop] && typeof (this as any)[prop] === "function") {
-      if (hasCallOnce(ctx)) return;
+      if (hasCallOnce(this, prop, ctx)) return;
       const ret = (this as any)[prop](...args);
       if (ctx) {
         // only when initializing can bindUnmount
         if (ctx.isCallOnce && typeof ret === "function") {
           bindUnmount(target, this, prop, ret);
         }
-        ctx.isTruelyCalled = Boolean(ret);
+        (this as any)[getCalledProp(prop)] = Boolean(ret);
       }
     } else {
       throw new Error("react lifecycle decorators only used for function");
@@ -421,14 +429,14 @@ export function updated<
       componentDidUpdate.apply(this, args);
     }
     if ((this as any)[prop] && typeof (this as any)[prop] === "function") {
-      if (hasCallOnce(ctx)) return;
+      if (hasCallOnce(this, prop, ctx)) return;
       const ret = (this as any)[prop](...args);
       if (ctx) {
         // only when initializing can bindUnmount
         if (ctx.isCallOnce && typeof ret === "function") {
           bindUnmount(target, this, prop, ret);
         }
-        ctx.isTruelyCalled = Boolean(ret);
+        (this as any)[getCalledProp(prop)] = Boolean(ret);
       }
     } else {
       throw new Error("react lifecycle decorators only used for function");
@@ -557,7 +565,6 @@ export function initialize<
   }
 ) {
   const ctx = {
-    isTruelyCalled: false,
     isCallOnce: true,
   };
   mounted(target, prop, descriptor, ctx);
